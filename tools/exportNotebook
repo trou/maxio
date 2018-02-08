@@ -28,10 +28,10 @@ test -z "$id" && exit 1
 tmpfolder=$(mktemp -d)
 
 # Getting notebook data
-scp -q ${SSH_IP}:"${id}".{lines,pagedata,metadata} "${tmpfolder}"/
+scp -q ${SSH_IP}:"${id}.*" "${tmpfolder}"/
 
 # Copy underyling document pdf if it exists
-ssh -q ${SSH_IP} "[[ -f "${id}.pdf" ]]" && scp -q ${SSH_IP}:"${id}.pdf" "${tmpfolder}"
+#ssh -q ${SSH_IP} "[[ -f "${id}.pdf" ]]" && scp -q ${SSH_IP}:"${id}.pdf" "${tmpfolder}"
 
 # Fix for single page notebooks with no template (empty pagedata file by default)
 if [ ! -s "${tmpfolder}"/*.pagedata ]
