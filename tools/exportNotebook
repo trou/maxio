@@ -76,17 +76,33 @@ then
         width=$(echo ${size} | cut -f1 -d " ")
         height=$(echo ${size} | cut -f2 -d " ")
 
+        # Check orientation 
+        landscape=$(echo "${width} > ${height}" |bc)
         # Calculate new width and necessary offset (rM dimensions: 1404x1872)
-        new_width=$(echo "scale=5; ${height} / 1872 * 1404" | bc)
-        offset=$(echo "scale=5; ${new_width} - ${width}" | bc)
+        if [[ $landscape -eq "1" ]]; then
+            echo "Found landscape PDF"
+            new_height=$(echo "scale=5; ${width} / 1872 * 1404" | bc)
+            offset=$(echo "scale=5; ${new_height}-${height}" | bc)
+            echo "Original PDF dimensions are (${width}x${height}), correcting by offset of ${offset} to fit rM foreground."
+            gs -q -sDEVICE=pdfwrite -dBATCH -dNOPAUSE -sOutputFile=${tmpfolder}/background_scale.pdf \
+               -dDEVICEWIDTHPOINTS=${width} -dDEVICEHEIGHTPOINTS=${new_height} -dFIXEDMEDIA \
+               -f "${tmpfolder}/background_original.pdf"
+            # Add offset to background.pdf to match foreground dimensions
+            gs -q -sDEVICE=pdfwrite -dBATCH -dNOPAUSE -sOutputFile=${tmpfolder}/background_with_offset.pdf \
+               -c "<</BeginPage{1 1 scale 0 ${offset} translate}>> setpagedevice" \
+               -f "${tmpfolder}/background_scale.pdf"
+        else
+            new_width=$(echo "scale=5; ${height} / 1872 * 1404" | bc)
+            offset=$(echo "scale=5; ${new_width} - ${width}" | bc)
+            # Add offset to background.pdf to match foreground dimensions
+            echo "Original PDF dimensions are (${width}x${height}), correcting by offset of ${offset} to fit rM foreground."
+            gs -q -sDEVICE=pdfwrite -dBATCH -dNOPAUSE -sOutputFile=${tmpfolder}/background_with_offset.pdf \
+               -dDEVICEWIDTHPOINTS=${new_width} -dDEVICEHEIGHTPOINTS=${height} -dFIXEDMEDIA \
+               -c "{${offset} 0 translate}" \
+               -f "${tmpfolder}/background_original.pdf"
+        fi
 
-        echo "Original PDF dimensions are (${width}x${height}), correcting by offset of ${offset} to fit rM foreground."
 
-        # Add offset to background.pdf to match foreground dimensions
-        gs -q -sDEVICE=pdfwrite -dBATCH -dNOPAUSE -sOutputFile=${tmpfolder}/background_with_offset.pdf \
-        -dDEVICEWIDTHPOINTS=${new_width} -dDEVICEHEIGHTPOINTS=${height} -dFIXEDMEDIA \
-        -c "{${offset} 0 translate}" \
-        -f "${tmpfolder}/background_original.pdf"
 
         ln -s ${tmpfolder}/background_with_offset.pdf ${tmpfolder}/background.pdf
     else
@@ -112,11 +128,18 @@ else
     convert -density 100 "${tmpfolder}"/foreground*.svg -transparent white "${tmpfolder}"/foreground.pdf
 fi
 
+# Rotate if landscape
+if [[ $landscape -eq "1" ]]; then
+    pdftk "${tmpfolder}/foreground.pdf" cat 1-endeast output "${tmpfolder}/foreground_final.pdf";
+else
+    mv "${tmpfolder}/foreground.pdf" "${tmpfolder}/foreground_final.pdf";
+fi
+
 # Strip .pdf suffix if it already exists (document vs. notebook)
 filename=$(basename -s .pdf ${filename//\"/})
 
 # Use multistamp instead of multibackground to preserve transparency
-pdftk "${tmpfolder}"/background.pdf multistamp "${tmpfolder}"/foreground.pdf output "${filename}.pdf"
+pdftk "${tmpfolder}"/background.pdf multistamp "${tmpfolder}"/foreground_final.pdf output "${filename}.pdf"
 
 filesize=$(ls -la "${filename}.pdf" | awk '{print $5}' | numfmt --to=iec-i --suffix=B --format="%.3f")
 echo "Written ${filesize} to ${filename}.pdf"
